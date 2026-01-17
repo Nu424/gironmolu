@@ -12,22 +12,31 @@ import { deleteNodeCascade } from "@/features/workspaces/domain/tree"
 import { reorderSiblings } from "@/features/workspaces/domain/ordering"
 
 type AddNodeInput =
-  | (Omit<TextNode, "id" | "createdAt" | "updatedAt"> & {
+  | ({
       type: "question"
+      workspaceId: WorkspaceId
+      parentId: NodeId | null
       question: string
       answer: string
       reconstructedText: string
       order?: number
+      origin?: "user" | "llm"
     })
-  | (Omit<TextNode, "id" | "createdAt" | "updatedAt"> & {
+  | ({
       type: "heading"
+      workspaceId: WorkspaceId
+      parentId: NodeId | null
       title: string
       order?: number
+      origin?: "user" | "llm"
     })
-  | (Omit<TextNode, "id" | "createdAt" | "updatedAt"> & {
+  | ({
       type: "note"
+      workspaceId: WorkspaceId
+      parentId: NodeId | null
       text: string
       order?: number
+      origin?: "user" | "llm"
     })
 
 type PersistState = {
@@ -49,6 +58,8 @@ type PersistState = {
     parentId: NodeId | null
     orderedChildIds: NodeId[]
   }) => void
+
+  updateAppSettings: (partial: Partial<AppSettings>) => void
 }
 
 export const usePersistStore = create<PersistState>()(
@@ -137,7 +148,7 @@ export const usePersistStore = create<PersistState>()(
                 parentId,
                 type: "question",
                 order,
-                origin: "user",
+                origin: nodeData.origin ?? "user",
                 createdAt: now,
                 updatedAt: now,
                 question: nodeData.question,
@@ -151,7 +162,7 @@ export const usePersistStore = create<PersistState>()(
                 parentId,
                 type: "heading",
                 order,
-                origin: "user",
+                origin: nodeData.origin ?? "user",
                 createdAt: now,
                 updatedAt: now,
                 title: nodeData.title,
@@ -162,7 +173,7 @@ export const usePersistStore = create<PersistState>()(
                 parentId,
                 type: "note",
                 order,
-                origin: "user",
+                origin: nodeData.origin ?? "user",
                 createdAt: now,
                 updatedAt: now,
                 text: nodeData.text,
@@ -170,6 +181,13 @@ export const usePersistStore = create<PersistState>()(
 
         set((state) => ({
           nodesById: { ...state.nodesById, [id]: newNode } as Record<NodeId, TextNode>,
+          workspacesById: {
+            ...state.workspacesById,
+            [workspaceId]: {
+              ...state.workspacesById[workspaceId],
+              updatedAt: Date.now(),
+            },
+          },
         }))
 
         return id
@@ -177,6 +195,9 @@ export const usePersistStore = create<PersistState>()(
 
       updateNode: (partial) => {
         const { id, ...rest } = partial
+        const node = get().nodesById[id]
+        if (!node) return
+
         set((state) => ({
           nodesById: {
             ...state.nodesById,
@@ -186,6 +207,13 @@ export const usePersistStore = create<PersistState>()(
               updatedAt: Date.now(),
             } as TextNode,
           } as Record<NodeId, TextNode>,
+          workspacesById: {
+            ...state.workspacesById,
+            [node.workspaceId]: {
+              ...state.workspacesById[node.workspaceId],
+              updatedAt: Date.now(),
+            },
+          },
         }))
       },
 
@@ -201,7 +229,17 @@ export const usePersistStore = create<PersistState>()(
           idsToDelete.forEach((nodeId) => {
             delete newNodesById[nodeId]
           })
-          return { nodesById: newNodesById }
+
+          return {
+            nodesById: newNodesById,
+            workspacesById: {
+              ...state.workspacesById,
+              [node.workspaceId]: {
+                ...state.workspacesById[node.workspaceId],
+                updatedAt: Date.now(),
+              },
+            },
+          }
         })
       },
 
@@ -218,8 +256,23 @@ export const usePersistStore = create<PersistState>()(
           reordered.forEach((n) => {
             newNodesById[n.id] = n
           })
-          return { nodesById: newNodesById }
+          return {
+            nodesById: newNodesById,
+            workspacesById: {
+              ...state.workspacesById,
+              [workspaceId]: {
+                ...state.workspacesById[workspaceId],
+                updatedAt: Date.now(),
+              },
+            },
+          }
         })
+      },
+
+      updateAppSettings: (partial) => {
+        set((state) => ({
+          appSettings: { ...state.appSettings, ...partial },
+        }))
       },
     }),
     {
