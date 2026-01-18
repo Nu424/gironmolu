@@ -1,12 +1,14 @@
 import { z } from "zod"
 
-const TreeNodeOutputSchema: z.ZodType<{
+type TreeNodeOutput = {
   type: "heading" | "question" | "note"
   title?: string
   question?: string
   text?: string
-  children?: unknown[]
-}> = z.discriminatedUnion("type", [
+  children?: TreeNodeOutput[]
+}
+
+const TreeNodeOutputSchema: z.ZodType<TreeNodeOutput> = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("heading"),
     title: z.string(),

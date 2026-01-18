@@ -1,6 +1,7 @@
 import {
   callOpenRouterAPI,
   type ChatMessage,
+  isOpenRouterError,
 } from "./client"
 import {
   InitialGenerateOutputSchema,
@@ -17,6 +18,26 @@ import { zodToJsonSchema } from "zod-to-json-schema"
 const toJsonSchema = (schema: z.ZodTypeAny) =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   zodToJsonSchema(schema as unknown as any)
+
+export function toUserFriendlyError(err: unknown): string {
+  if (isOpenRouterError(err)) {
+    if (err.statusCode === 401) {
+      return "APIキーが無効です"
+    }
+    if (err.statusCode === 429) {
+      return "レート制限です。少し待ってから再実行してください"
+    }
+    if (err.statusCode >= 500) {
+      return "OpenRouter側でエラーが発生しました"
+    }
+  }
+
+  if (err instanceof Error && err.message.includes("JSON parse failed")) {
+    return "LLM出力の解析に失敗しました"
+  }
+
+  return err instanceof Error ? err.message : "不明なエラー"
+}
 
 async function parseJSON<T>(content: string, schema: z.ZodSchema<T>): Promise<T> {
   try {
@@ -99,14 +120,16 @@ export async function generateFollowupQuestions(
   workspaceMarkdownWithIds: string,
   count: number,
   apiKey: string,
-  model: string
+  model: string,
+  originNodeId?: string
 ): Promise<FollowupGenerateOutput> {
   const { system, user } = buildFollowupGeneratePrompt(
     theme,
     description,
     guidelineText,
     workspaceMarkdownWithIds,
-    count
+    count,
+    originNodeId
   )
 
   const messages: ChatMessage[] = [

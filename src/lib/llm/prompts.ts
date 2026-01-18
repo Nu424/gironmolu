@@ -59,16 +59,22 @@ export function buildFollowupGeneratePrompt(
   description: string | undefined,
   guidelineText: string,
   workspaceMarkdownWithIds: string,
-  count: number
+  count: number,
+  originNodeId?: string
 ): {
   system: string
   user: string
 } {
   const systemPrompt = `あなたは議論を深めるための質問を生成する専門家です。`
 
+  let originPrompt = ""
+  if (originNodeId) {
+    originPrompt = `\n\n【起点ノード】\n質問生成の起点となるノードID: ${originNodeId}\nこのノード配下の質問を優先的に生成してください。`
+  }
+
   const userPrompt = `テーマ: """${theme}"""
 ${description ? `追加説明: """${description}"""` : ""}
-質問生成指針: """${guidelineText}"""
+質問生成指針: """${guidelineText}"""${originPrompt}
 
 現在のワークスペース（ID付き）:
 ${workspaceMarkdownWithIds}
@@ -77,14 +83,15 @@ ${workspaceMarkdownWithIds}
 - 新しい質問を${count}個生成
 - 既存の質問/内容の言い換えを避ける
 - 1質問1論点、Yes/Noで終わらない
-- parentIdは上記の [xxxx] に出てくるIDから選ぶ（見つからなければ null）
+- parentIdは上記の [xxxx] に出てくるIDを **括弧なし** で指定（見つからなければ null）
+- 出力例: { "question": "質問", "parentId": "abc123" } または { "question": "質問", "parentId": null }
 - 前提/制約/具体例/評価軸/代替案/リスク/次アクションを意識する
 - 出力はJSONのみ
 
 出力形式:
 {
   "newQuestions": [
-    { "question": "追加質問1", "parentId": "[ノードID] or null" }
+    { "question": "追加質問1", "parentId": "ノードID or null" }
   ]
 }`
 
