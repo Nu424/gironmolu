@@ -88,6 +88,7 @@ function TreeNodeComponent({ node, workspaceId, depth, dragHandleProps }: TreeNo
 
 function SortableTreeNode({ node, workspaceId, depth }: { node: TreeNode; workspaceId: WorkspaceId; depth: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id })
+  const highlighted = useUIStore((s) => s.highlighted[node.id])
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -98,7 +99,11 @@ function SortableTreeNode({ node, workspaceId, depth }: { node: TreeNode; worksp
   const dragHandleProps = { ...attributes, ...(listeners ?? {}) } as ButtonHTMLAttributes<HTMLButtonElement>
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`transition-colors duration-500 ${highlighted ? "bg-yellow-50" : ""}`}
+    >
       <TreeNodeComponent
         node={node}
         workspaceId={workspaceId}

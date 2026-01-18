@@ -92,7 +92,7 @@ export default function WorkspaceSettingsPage() {
               placeholder="例: 厳しめの視点で検討します"
             />
             <p className="text-xs text-gray-500 mt-1">
-              追加質問生成時に使用されます（Phase 9で実装）
+              追加質問生成時に使用されます
             </p>
           </div>
 
@@ -110,7 +110,7 @@ export default function WorkspaceSettingsPage() {
               className="w-full border rounded-lg px-3 py-2"
             />
             <p className="text-xs text-gray-500 mt-1">
-              一度に生成する追加質問の数（Phase 9で実装）
+              一度に生成する追加質問の数
             </p>
           </div>
 

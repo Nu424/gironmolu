@@ -12,30 +12,51 @@ function isQuestionNode(node: TextNode): node is TQuestionNode {
 
 export default function WorkspaceListPage() {
   const navigate = useNavigate()
-  const { workspaceIds, workspacesById, createWorkspace, deleteWorkspace, nodesById } = usePersistStore()
-  const showToast = useUIStore((s) => s.showToast)
+  const {
+    workspaceIds,
+    workspacesById,
+    createWorkspaceWithLLM,
+    deleteWorkspace,
+    nodesById,
+    appSettings,
+  } = usePersistStore()
+  const { creatingWorkspace, setCreatingWorkspace, showToast } = useUIStore()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [theme, setTheme] = useState("")
   const [description, setDescription] = useState("")
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!theme.trim()) {
       showToast("error", "テーマは必須です")
       return
     }
 
-    const workspaceId = createWorkspace({
-      theme: theme.trim(),
-      description: description.trim() || undefined,
-      guidelineText: "",
-      config: { followupCount: 3 },
-    })
+    if (!appSettings.openRouterApiKey.trim()) {
+      showToast("error", "APIキーが設定されていません。アプリ設定で設定してください")
+      return
+    }
 
-    setIsModalOpen(false)
-    setTheme("")
-    setDescription("")
-    navigate(`/workspaces/${workspaceId}`)
+    setCreatingWorkspace(true)
+
+    try {
+      const result = await createWorkspaceWithLLM(
+        theme.trim(),
+        description.trim() || undefined
+      )
+
+      if (result.error) {
+        showToast("error", result.error)
+        return
+      }
+
+      setIsModalOpen(false)
+      setTheme("")
+      setDescription("")
+      navigate(`/workspaces/${result.workspaceId}`)
+    } finally {
+      setCreatingWorkspace(false)
+    }
   }
 
   const handleDelete = (id: string, theme: string) => {
@@ -72,12 +93,23 @@ export default function WorkspaceListPage() {
               アプリ設定
             </button>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            新規作成
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              disabled={!appSettings.openRouterApiKey.trim()}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              新規作成
+            </button>
+            {!appSettings.openRouterApiKey.trim() && (
+              <button
+                onClick={() => navigate("/settings")}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                APIキーを設定する
+              </button>
+            )}
+          </div>
         </header>
 
         {workspaceIds.length === 0 ? (
@@ -170,13 +202,23 @@ export default function WorkspaceListPage() {
             >
               キャンセル
             </button>
+          <div className="flex flex-col items-end gap-1">
             <button
               onClick={handleCreate}
-              disabled={!theme.trim()}
+              disabled={!theme.trim() || creatingWorkspace || !appSettings.openRouterApiKey.trim()}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              作成
+              {creatingWorkspace ? "生成中..." : "作成"}
             </button>
+            {!appSettings.openRouterApiKey.trim() && (
+              <button
+                onClick={() => navigate("/settings")}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                APIキーを設定する
+              </button>
+            )}
+          </div>
           </div>
         </div>
       </Modal>

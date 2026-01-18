@@ -3,6 +3,7 @@ import type { TreeNode, WorkspaceId, QuestionNode as TQuestionNode } from "@/typ
 import { usePersistStore } from "@/stores/persistStore"
 import { useUIStore } from "@/stores/uiStore"
 import { Trash2, ChevronRight, ChevronDown, Plus } from "lucide-react"
+import { generateReconstructedText, toUserFriendlyError } from "@/lib/llm/api"
 
 const childOptions = [
   { label: "質問", value: "question" },
@@ -25,8 +26,8 @@ export default function QuestionRow({
   onToggleExpanded,
   dragHandleProps,
 }: QuestionRowProps) {
-  const { updateNode, addNode, deleteNode } = usePersistStore()
-  const showToast = useUIStore((s) => s.showToast)
+  const { updateNode, addNode, deleteNode, appSettings, generateFollowupQuestionsForWorkspace } = usePersistStore()
+  const { nodeBusy, setNodeBusy, setExpanded, showToast, flashHighlight } = useUIStore()
 
   const [question, setQuestion] = useState(node.question)
   const [answer, setAnswer] = useState(node.answer)
@@ -84,6 +85,71 @@ export default function QuestionRow({
     deleteNode(node.id)
     showToast("info", "削除しました")
   }
+
+  const handleReconstruct = async () => {
+    if (!appSettings.openRouterApiKey.trim()) {
+      showToast("error", "APIキーが設定されていません。アプリ設定で設定してください")
+      return
+    }
+
+    setNodeBusy(node.id, "reconstructing")
+
+    try {
+      const reconstructResult = await generateReconstructedText(
+        question,
+        answer,
+        appSettings.openRouterApiKey,
+        appSettings.model
+      )
+
+      updateNode({
+        id: node.id,
+        reconstructedText: reconstructResult.reconstructedText,
+      })
+
+      setNodeBusy(node.id, "generatingFollowups")
+
+      const followupResult = await generateFollowupQuestionsForWorkspace(workspaceId, node.id)
+      followupResult.expandIds.forEach((expandId) => {
+        setExpanded(expandId, true)
+      })
+      flashHighlight(followupResult.nodeIds, 3000)
+
+      showToast("info", `${followupResult.nodeIds.length}個の質問を追加しました`)
+    } catch (err) {
+      const message = toUserFriendlyError(err)
+      showToast("error", message)
+    } finally {
+      setNodeBusy(node.id, undefined)
+    }
+  }
+
+  const handleGenerateFollowupQuestions = async () => {
+    if (!appSettings.openRouterApiKey.trim()) {
+      showToast("error", "APIキーが設定されていません。アプリ設定で設定してください")
+      return
+    }
+
+    setNodeBusy(node.id, "generatingFollowups")
+
+    try {
+      const followupResult = await generateFollowupQuestionsForWorkspace(workspaceId, node.id)
+      followupResult.expandIds.forEach((expandId) => {
+        setExpanded(expandId, true)
+      })
+      flashHighlight(followupResult.nodeIds, 3000)
+
+      showToast("info", `${followupResult.nodeIds.length}個の質問を追加しました`)
+    } catch (err) {
+      const message = toUserFriendlyError(err)
+      showToast("error", message)
+    } finally {
+      setNodeBusy(node.id, undefined)
+    }
+  }
+
+  const isBusy = nodeBusy[node.id]
+  const hasApiKey = appSettings.openRouterApiKey.trim().length > 0
 
   const hasChildren = node.children.length > 0
 
@@ -144,19 +210,28 @@ export default function QuestionRow({
 
           <div className="flex flex-wrap gap-2">
             <button
-              disabled
-              title="再構成（Phase 9で実装予定）"
+              onClick={handleReconstruct}
+              disabled={!answer.trim() || !!isBusy}
+              title={answer.trim() ? "" : "回答を入力してください"}
               className="px-2 py-1 text-xs border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              再構成
+              {isBusy === "reconstructing" ? "再構成中..." : "再構成"}
             </button>
             <button
-              disabled
-              title="質問を追加（Phase 9で実装予定）"
+              onClick={handleGenerateFollowupQuestions}
+              disabled={!!isBusy || !hasApiKey}
               className="px-2 py-1 text-xs border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              質問を追加（LLM）
+              {isBusy === "generatingFollowups" ? "生成中..." : "質問を追加（LLM）"}
             </button>
+            {!hasApiKey && (
+              <button
+                onClick={() => window.location.assign("#/settings")}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                APIキーを設定する
+              </button>
+            )}
             <label className="flex items-center gap-1 text-xs border rounded px-2 py-1 hover:bg-gray-100">
               <Plus size={12} />
               <span>子を追加</span>

@@ -2,10 +2,12 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { usePersistStore } from "@/stores/persistStore"
 import { Toast } from "@/components/Toast"
+import { useUIStore } from "@/stores/uiStore"
 
 export default function AppSettingsPage() {
   const navigate = useNavigate()
-  const { appSettings, updateAppSettings } = usePersistStore()
+  const { appSettings, updateAppSettings, testConnection } = usePersistStore()
+  const { showToast } = useUIStore()
   const [apiKey, setApiKey] = useState(appSettings.openRouterApiKey)
   const [model, setModel] = useState(appSettings.model)
   const [modelChoice, setModelChoice] = useState(
@@ -27,6 +29,22 @@ export default function AppSettingsPage() {
   const handleSave = () => {
     updateAppSettings({ openRouterApiKey: apiKey, model })
     navigate("/")
+  }
+
+  const [testingConnection, setTestingConnection] = useState(false)
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true)
+
+    const result = await testConnection({ apiKey, model })
+
+    setTestingConnection(false)
+
+    if (result.success) {
+      showToast("info", "接続に成功しました")
+    } else {
+      showToast("error", `接続に失敗しました: ${result.error}`)
+    }
   }
 
   return (
@@ -104,11 +122,11 @@ export default function AppSettingsPage() {
 
           <div className="flex items-center justify-between pt-4 border-t">
             <button
-              disabled
-              title="接続テスト（Phase 9で実装予定）"
+              onClick={handleTestConnection}
+              disabled={testingConnection}
               className="px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              接続テスト（LLM）
+              {testingConnection ? "テスト中..." : "接続テスト（LLM）"}
             </button>
             <button
               onClick={handleSave}
