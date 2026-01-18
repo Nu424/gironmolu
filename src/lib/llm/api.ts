@@ -7,12 +7,19 @@ import {
   InitialGenerateOutputSchema,
   ReconstructOutputSchema,
   FollowupGenerateOutputSchema,
+  AssistAnswerOutputSchema,
   TreeNodeOutputSchema,
   type InitialGenerateOutput,
   type ReconstructOutput,
   type FollowupGenerateOutput,
+  type AssistAnswerOutput,
 } from "./schemas"
-import { buildInitialGeneratePrompt, buildReconstructPrompt, buildFollowupGeneratePrompt } from "./prompts"
+import {
+  buildInitialGeneratePrompt,
+  buildReconstructPrompt,
+  buildFollowupGeneratePrompt,
+  buildAssistAnswerPrompt,
+} from "./prompts"
 import { zodToJsonSchema } from "zod-to-json-schema"
 
 type SchemaParser<T> = { parse: (value: unknown) => T }
@@ -157,4 +164,44 @@ export async function generateFollowupQuestions(
 
   const content = response.choices[0].message.content
   return parseJSON(content, FollowupGenerateOutputSchema)
+}
+
+export async function generateAssistedAnswer(
+  theme: string,
+  description: string | undefined,
+  guidelineText: string,
+  workspaceMarkdown: string,
+  question: string,
+  apiKey: string,
+  model: string
+): Promise<AssistAnswerOutput> {
+  const { system, user } = buildAssistAnswerPrompt(
+    theme,
+    description,
+    guidelineText,
+    workspaceMarkdown,
+    question
+  )
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ]
+
+  const response = await callOpenRouterAPI({
+    apiKey,
+    model,
+    messages,
+    responseFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: "assistAnswer",
+        strict: true,
+        schema: toJsonSchema(AssistAnswerOutputSchema),
+      },
+    },
+  })
+
+  const content = response.choices[0].message.content
+  return parseJSON(content, AssistAnswerOutputSchema)
 }

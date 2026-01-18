@@ -27,6 +27,7 @@ export default function NoteRow({
 }: NoteRowProps) {
   const { updateNode, addNode, deleteNode } = usePersistStore()
   const showToast = useUIStore((s) => s.showToast)
+  const highlighted = useUIStore((s) => s.highlighted[node.id])
 
   const [text, setText] = useState(node.text)
 
@@ -80,10 +81,12 @@ export default function NoteRow({
   }
 
   const hasChildren = node.children.length > 0
+  const rowTone = highlighted ? "bg-yellow-50" : ""
+  const hoverTone = highlighted ? "hover:bg-yellow-100" : "hover:bg-gray-50"
 
   return (
     <div className="border-b last:border-b-0">
-      <div className="flex items-start gap-2 p-2 hover:bg-gray-50">
+      <div className={`flex items-start gap-2 p-2 transition-colors duration-500 ${rowTone} ${hoverTone}`}>
         <button
           onClick={onToggleExpanded}
           className="p-1 hover:bg-gray-200 rounded flex-shrink-0"

@@ -54,4 +54,4 @@ export type TreeNode = TextNode & {
   children: TreeNode[]
 }
 
-export type NodeBusy = "reconstructing" | "generatingFollowups"
+export type NodeBusy = "reconstructing" | "generatingFollowups" | "assistingAnswer"

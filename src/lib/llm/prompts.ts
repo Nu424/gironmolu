@@ -97,3 +97,36 @@ ${workspaceMarkdownWithIds}
 
   return { system: systemPrompt, user: userPrompt }
 }
+
+export function buildAssistAnswerPrompt(
+  theme: string,
+  description: string | undefined,
+  guidelineText: string,
+  workspaceMarkdown: string,
+  question: string
+): {
+  system: string
+  user: string
+} {
+  const systemPrompt = `あなたは既存の回答内容から補助的に答えを埋めるアシスタントです。`
+
+  const userPrompt = `テーマ: """${theme}"""
+${description ? `追加説明: """${description}"""` : ""}
+質問生成指針: """${guidelineText}"""
+
+現在のワークスペース:
+${workspaceMarkdown}
+
+対象の質問:
+"""${question}"""
+
+指示:
+- 既存の回答・メモから読み取れる・推測される内容のみを使う
+- 回答は短く1-2文で簡潔に表現する(敬体・敬称は不要)
+- 出力はJSONのみ
+
+出力形式:
+{ "answer": "..." }`
+
+  return { system: systemPrompt, user: userPrompt }
+}

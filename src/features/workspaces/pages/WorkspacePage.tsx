@@ -13,10 +13,11 @@ export default function WorkspacePage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const navigate = useNavigate()
   const { workspacesById, nodesById, addNode, appSettings, generateFollowupQuestionsForWorkspace } = usePersistStore()
-  const { rootBusyByWorkspace, setRootBusy, showToast, setExpanded, flashHighlight, expanded } = useUIStore()
+  const { rootBusyByWorkspace, setRootBusy, showToast, setExpanded, setExpandedMany, flashHighlight, expanded } = useUIStore()
 
   const nodes = Object.values(nodesById).filter((n) => n.workspaceId === workspaceId)
   const tree = buildTree(nodes)
+  const nodeIds = nodes.map((node) => node.id as NodeId)
 
   useEffect(() => {
     if (tree.length === 0) return
@@ -85,6 +86,14 @@ export default function WorkspacePage() {
     }
   }
 
+  const handleExpandAll = () => {
+    setExpandedMany(nodeIds, true)
+  }
+
+  const handleCollapseAll = () => {
+    setExpandedMany(nodeIds, false)
+  }
+
   const isGenerating = rootBusyByWorkspace[workspaceId as WorkspaceId]
 
   if (!workspace) {
@@ -114,12 +123,20 @@ export default function WorkspacePage() {
                 <p className="text-gray-600">{workspace.description}</p>
               )}
             </div>
-            <button
-              onClick={() => navigate(`/workspaces/${workspaceId}/settings`)}
-              className="px-3 py-1.5 border rounded hover:bg-gray-50 text-sm"
-            >
-              設定
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate("/")}
+                className="px-3 py-1.5 border rounded hover:bg-gray-50 text-sm"
+              >
+                一覧へ戻る
+              </button>
+              <button
+                onClick={() => navigate(`/workspaces/${workspaceId}/settings`)}
+                className="px-3 py-1.5 border rounded hover:bg-gray-50 text-sm"
+              >
+                設定
+              </button>
+            </div>
           </div>
         </header>
 
@@ -130,6 +147,20 @@ export default function WorkspacePage() {
             className="px-3 py-1.5 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
             {isGenerating ? "生成中..." : "追加質問生成（LLM）"}
+          </button>
+          <button
+            onClick={handleExpandAll}
+            disabled={nodeIds.length === 0}
+            className="px-3 py-1.5 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            すべて展開
+          </button>
+          <button
+            onClick={handleCollapseAll}
+            disabled={nodeIds.length === 0}
+            className="px-3 py-1.5 border rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            すべて折りたたむ
           </button>
           {!hasApiKey && (
             <button

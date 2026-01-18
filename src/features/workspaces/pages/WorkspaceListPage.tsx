@@ -19,12 +19,15 @@ export default function WorkspaceListPage() {
     deleteWorkspace,
     nodesById,
     appSettings,
+    importWorkspaceFromJson,
   } = usePersistStore()
   const { creatingWorkspace, setCreatingWorkspace, showToast } = useUIStore()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [theme, setTheme] = useState("")
   const [description, setDescription] = useState("")
+  const [importJson, setImportJson] = useState("")
+  const [isImporting, setIsImporting] = useState(false)
 
   const handleCreate = async () => {
     if (!theme.trim()) {
@@ -63,6 +66,28 @@ export default function WorkspaceListPage() {
     if (!confirm(`${theme} を削除しますか？`)) return
     deleteWorkspace(id)
     showToast("info", "削除しました")
+  }
+
+  const handleImport = () => {
+    if (!importJson.trim()) {
+      showToast("error", "インポートするJSONを入力してください")
+      return
+    }
+
+    setIsImporting(true)
+
+    try {
+      const result = importWorkspaceFromJson(importJson)
+      setIsModalOpen(false)
+      setImportJson("")
+      showToast("info", `${result.nodeCount}件のノードをインポートしました`)
+      navigate(`/workspaces/${result.workspaceId}`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "インポートに失敗しました"
+      showToast("error", message)
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   const getProgress = (workspaceId: string) => {
@@ -202,23 +227,41 @@ export default function WorkspaceListPage() {
             >
               キャンセル
             </button>
-          <div className="flex flex-col items-end gap-1">
-            <button
-              onClick={handleCreate}
-              disabled={!theme.trim() || creatingWorkspace || !appSettings.openRouterApiKey.trim()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {creatingWorkspace ? "生成中..." : "作成"}
-            </button>
-            {!appSettings.openRouterApiKey.trim() && (
+            <div className="flex flex-col items-end gap-1">
               <button
-                onClick={() => navigate("/settings")}
-                className="text-xs text-blue-600 hover:underline"
+                onClick={handleCreate}
+                disabled={!theme.trim() || creatingWorkspace || !appSettings.openRouterApiKey.trim()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                APIキーを設定する
+                {creatingWorkspace ? "生成中..." : "作成"}
               </button>
-            )}
+              {!appSettings.openRouterApiKey.trim() && (
+                <button
+                  onClick={() => navigate("/settings")}
+                  className="text-xs text-blue-600 hover:underline"
+                >
+                  APIキーを設定する
+                </button>
+              )}
+            </div>
           </div>
+          <div className="pt-4 border-t space-y-2">
+            <div className="text-sm font-semibold">JSONインポート</div>
+            <textarea
+              value={importJson}
+              onChange={(e) => setImportJson(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 h-32 resize-none font-mono text-sm"
+              placeholder="ここにエクスポートしたJSONを貼り付けてください"
+            />
+            <div className="flex justify-end">
+              <button
+                onClick={handleImport}
+                disabled={!importJson.trim() || isImporting}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isImporting ? "インポート中..." : "インポート"}
+              </button>
+            </div>
           </div>
         </div>
       </Modal>

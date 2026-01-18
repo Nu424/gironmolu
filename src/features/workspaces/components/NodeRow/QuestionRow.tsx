@@ -2,8 +2,9 @@ import { useState, useEffect } from "react"
 import type { TreeNode, WorkspaceId, QuestionNode as TQuestionNode } from "@/types/domain"
 import { usePersistStore } from "@/stores/persistStore"
 import { useUIStore } from "@/stores/uiStore"
-import { Trash2, ChevronRight, ChevronDown, Plus } from "lucide-react"
-import { generateReconstructedText, toUserFriendlyError } from "@/lib/llm/api"
+import { Trash2, ChevronRight, ChevronDown, Plus, Sparkles } from "lucide-react"
+import { generateReconstructedText, generateAssistedAnswer, toUserFriendlyError } from "@/lib/llm/api"
+import { workspaceToMarkdown } from "@/features/workspaces/domain/markdown"
 
 const childOptions = [
   { label: "質問", value: "question" },
@@ -26,8 +27,17 @@ export default function QuestionRow({
   onToggleExpanded,
   dragHandleProps,
 }: QuestionRowProps) {
-  const { updateNode, addNode, deleteNode, appSettings, generateFollowupQuestionsForWorkspace } = usePersistStore()
+  const {
+    updateNode,
+    addNode,
+    deleteNode,
+    appSettings,
+    generateFollowupQuestionsForWorkspace,
+    workspacesById,
+    nodesById,
+  } = usePersistStore()
   const { nodeBusy, setNodeBusy, setExpanded, showToast, flashHighlight } = useUIStore()
+  const highlighted = useUIStore((s) => s.highlighted[node.id])
 
   const [question, setQuestion] = useState(node.question)
   const [answer, setAnswer] = useState(node.answer)
@@ -106,16 +116,6 @@ export default function QuestionRow({
         id: node.id,
         reconstructedText: reconstructResult.reconstructedText,
       })
-
-      setNodeBusy(node.id, "generatingFollowups")
-
-      const followupResult = await generateFollowupQuestionsForWorkspace(workspaceId, node.id)
-      followupResult.expandIds.forEach((expandId) => {
-        setExpanded(expandId, true)
-      })
-      flashHighlight(followupResult.nodeIds, 3000)
-
-      showToast("info", `${followupResult.nodeIds.length}個の質問を追加しました`)
     } catch (err) {
       const message = toUserFriendlyError(err)
       showToast("error", message)
@@ -148,14 +148,71 @@ export default function QuestionRow({
     }
   }
 
+  const handleAssistAnswer = async () => {
+    if (answer.trim()) return
+
+    if (!appSettings.openRouterApiKey.trim()) {
+      showToast("error", "APIキーが設定されていません。アプリ設定で設定してください")
+      return
+    }
+
+    const workspace = workspacesById[workspaceId]
+    if (!workspace) {
+      showToast("error", "ワークスペースが見つかりません")
+      return
+    }
+
+    const workspaceNodes = Object.values(nodesById).filter((n) => n.workspaceId === workspaceId)
+    const markdown = workspaceToMarkdown(workspace, workspaceNodes)
+
+    setNodeBusy(node.id, "assistingAnswer")
+
+    try {
+      const assistResult = await generateAssistedAnswer(
+        workspace.theme,
+        workspace.description,
+        workspace.guidelineText,
+        markdown,
+        question,
+        appSettings.openRouterApiKey,
+        appSettings.model
+      )
+
+      const assistedAnswer = assistResult.answer.trim()
+      if (!assistedAnswer) {
+        showToast("info", "補助できる内容が見つかりませんでした")
+        return
+      }
+
+      setAnswer(assistResult.answer)
+      updateNode({
+        id: node.id,
+        answer: assistResult.answer,
+      })
+      showToast("info", "回答を補助入力しました")
+    } catch (err) {
+      const message = toUserFriendlyError(err)
+      showToast("error", message)
+    } finally {
+      setNodeBusy(node.id, undefined)
+    }
+  }
+
   const isBusy = nodeBusy[node.id]
+  const isAssisting = isBusy === "assistingAnswer"
   const hasApiKey = appSettings.openRouterApiKey.trim().length > 0
+  const canAssist = !answer.trim()
 
   const hasChildren = node.children.length > 0
+  const hasAnswer = answer.trim().length > 0
+  const hasReconstructed = reconstructedText.trim().length > 0
+  const statusTone = hasReconstructed ? "bg-emerald-50" : hasAnswer ? "bg-blue-50" : ""
+  const rowTone = highlighted ? "bg-yellow-50" : statusTone
+  const hoverTone = highlighted ? "hover:bg-yellow-100" : "hover:bg-gray-50"
 
   return (
     <div className="border-b last:border-b-0">
-      <div className="flex items-start gap-2 p-2 hover:bg-gray-50">
+      <div className={`flex items-start gap-2 p-2 transition-colors duration-500 ${rowTone} ${hoverTone}`}>
         <button
           onClick={onToggleExpanded}
           className="p-1 hover:bg-gray-200 rounded flex-shrink-0"
@@ -188,14 +245,27 @@ export default function QuestionRow({
             />
           </div>
 
-          <div>
+          <div className="relative">
             <textarea
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
               onBlur={(e) => handleBlur("answer", e.target.value)}
-              className="w-full border rounded px-2 py-1 text-sm resize-none min-h-[4em]"
+              className="w-full border rounded px-2 py-1 pr-10 text-sm resize-none min-h-[4em]"
               placeholder="回答を入力..."
             />
+            <button
+              type="button"
+              onClick={handleAssistAnswer}
+              disabled={!canAssist || !hasApiKey || !!isBusy}
+              title={
+                canAssist
+                  ? "回答を補助入力"
+                  : "回答が入力済みのため利用できません"
+              }
+              className="absolute top-2 right-2 p-1 rounded border text-gray-500 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Sparkles size={14} className={isAssisting ? "animate-pulse" : ""} />
+            </button>
           </div>
 
           <div>

@@ -8,7 +8,7 @@ import type { WorkspaceId } from "@/types/domain"
 export default function WorkspaceSettingsPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
   const navigate = useNavigate()
-  const { workspacesById, nodesById, updateWorkspace } = usePersistStore()
+  const { workspacesById, nodesById, updateWorkspace, exportWorkspaceToJson } = usePersistStore()
 
   const workspace = workspaceId ? workspacesById[workspaceId as WorkspaceId] : undefined
 
@@ -33,6 +33,7 @@ export default function WorkspaceSettingsPage() {
 
   const nodes = Object.values(nodesById).filter((n) => n.workspaceId === workspaceId)
   const markdown = workspaceToMarkdown(workspace, nodes)
+  const jsonExport = exportWorkspaceToJson(workspaceId as WorkspaceId)
 
   const handleSave = () => {
     updateWorkspace({
@@ -48,6 +49,15 @@ export default function WorkspaceSettingsPage() {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(markdown)
+      alert("コピーしました")
+    } catch {
+      alert("コピーに失敗しました")
+    }
+  }
+
+  const handleCopyJson = async () => {
+    try {
+      await navigator.clipboard.writeText(jsonExport)
       alert("コピーしました")
     } catch {
       alert("コピーに失敗しました")
@@ -124,9 +134,10 @@ export default function WorkspaceSettingsPage() {
           </div>
         </div>
 
-        <div className="mt-8">
-          <h2 className="text-lg font-semibold mb-4">エクスポート</h2>
+        <div className="mt-8 space-y-4">
+          <h2 className="text-lg font-semibold">エクスポート</h2>
           <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-semibold mb-2">Markdown</h3>
             <textarea
               readOnly
               value={markdown}
@@ -135,6 +146,22 @@ export default function WorkspaceSettingsPage() {
             <div className="mt-2">
               <button
                 onClick={handleCopy}
+                className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm"
+              >
+                コピー
+              </button>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-sm font-semibold mb-2">JSON</h3>
+            <textarea
+              readOnly
+              value={jsonExport}
+              className="w-full border rounded-lg px-3 py-2 h-48 resize-none font-mono text-sm"
+            />
+            <div className="mt-2">
+              <button
+                onClick={handleCopyJson}
                 className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm"
               >
                 コピー

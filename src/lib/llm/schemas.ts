@@ -52,3 +52,9 @@ export const FollowupGenerateOutputSchema = z.object({
 })
 
 export type FollowupGenerateOutput = z.infer<typeof FollowupGenerateOutputSchema>
+
+export const AssistAnswerOutputSchema = z.object({
+  answer: z.string(),
+})
+
+export type AssistAnswerOutput = z.infer<typeof AssistAnswerOutputSchema>

@@ -11,6 +11,11 @@ import type {
 import { deleteNodeCascade } from "@/features/workspaces/domain/tree"
 import { reorderSiblings } from "@/features/workspaces/domain/ordering"
 import {
+  importWorkspaceFromExport,
+  parseWorkspaceExport,
+  serializeWorkspaceExport,
+} from "@/features/workspaces/domain/workspaceTransfer"
+import {
   generateInitialTree,
   generateFollowupQuestions,
   generateReconstructedText,
@@ -70,6 +75,9 @@ type PersistState = {
     parentId: NodeId | null
     orderedChildIds: NodeId[]
   }) => void
+
+  exportWorkspaceToJson: (workspaceId: WorkspaceId) => string
+  importWorkspaceFromJson: (jsonText: string) => { workspaceId: WorkspaceId; nodeCount: number }
 
   generateFollowupQuestionsForWorkspace: (
     workspaceId: WorkspaceId,
@@ -469,6 +477,37 @@ export const usePersistStore = create<PersistState>()(
             },
           }
         })
+      },
+
+      exportWorkspaceToJson: (workspaceId) => {
+        const { workspacesById, nodesById } = get()
+        const workspace = workspacesById[workspaceId]
+        if (!workspace) {
+          throw new Error("ワークスペースが見つかりません")
+        }
+        const nodes = Object.values(nodesById).filter((n) => n.workspaceId === workspaceId)
+        return serializeWorkspaceExport(workspace, nodes)
+      },
+
+      importWorkspaceFromJson: (jsonText) => {
+        const parsed = parseWorkspaceExport(jsonText)
+        const newWorkspaceId = nanoid() as WorkspaceId
+        const { workspace, nodes } = importWorkspaceFromExport(parsed, newWorkspaceId, () => nanoid() as NodeId)
+
+        set((state) => {
+          const newNodesById = { ...state.nodesById }
+          nodes.forEach((node) => {
+            newNodesById[node.id] = node
+          })
+
+          return {
+            workspaceIds: [...state.workspaceIds, workspace.id],
+            workspacesById: { ...state.workspacesById, [workspace.id]: workspace },
+            nodesById: newNodesById,
+          }
+        })
+
+        return { workspaceId: newWorkspaceId, nodeCount: nodes.length }
       },
 
       updateAppSettings: (partial) => {
