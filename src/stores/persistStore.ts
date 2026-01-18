@@ -10,6 +10,14 @@ import type {
 } from "@/types/domain"
 import { deleteNodeCascade } from "@/features/workspaces/domain/tree"
 import { reorderSiblings } from "@/features/workspaces/domain/ordering"
+import {
+  generateInitialTree,
+  generateFollowupQuestions,
+  generateReconstructedText,
+  toUserFriendlyError,
+} from "@/lib/llm/api"
+import { formatGuidelines, workspaceToMarkdownForLLM } from "@/features/workspaces/domain/markdown"
+import type { InitialTreeNode } from "@/features/workspaces/domain/tree"
 
 type AddNodeInput =
   | ({
@@ -46,6 +54,10 @@ type PersistState = {
   nodesById: Record<NodeId, TextNode>
 
   createWorkspace: (workspace: Omit<Workspace, "id" | "createdAt" | "updatedAt">) => WorkspaceId
+  createWorkspaceWithLLM: (
+    theme: string,
+    description: string | undefined
+  ) => Promise<{ workspaceId: WorkspaceId; error?: string }>
   updateWorkspace: (partial: Partial<Workspace> & { id: WorkspaceId }) => void
   deleteWorkspace: (id: WorkspaceId) => void
 
@@ -58,6 +70,16 @@ type PersistState = {
     parentId: NodeId | null
     orderedChildIds: NodeId[]
   }) => void
+
+  generateFollowupQuestionsForWorkspace: (
+    workspaceId: WorkspaceId,
+    originNodeId?: NodeId
+  ) => Promise<{ nodeIds: NodeId[]; expandIds: NodeId[] }>
+
+  testConnection: (params: {
+    apiKey: string
+    model: string
+  }) => Promise<{ success: boolean; error?: string }>
 
   updateAppSettings: (partial: Partial<AppSettings>) => void
 }
@@ -89,6 +111,186 @@ export const usePersistStore = create<PersistState>()(
         }))
 
         return id
+      },
+
+      createWorkspaceWithLLM: async (theme, description) => {
+        const { appSettings, createWorkspace, addNode } = get()
+
+        if (!appSettings.openRouterApiKey.trim()) {
+          return { workspaceId: "" as WorkspaceId, error: "APIキーが設定されていません" }
+        }
+
+        try {
+          const result = await generateInitialTree(
+            theme,
+            description,
+            appSettings.openRouterApiKey,
+            appSettings.model
+          )
+
+          const createdWorkspaceId = createWorkspace({
+            theme: theme.trim(),
+            description: description?.trim() || undefined,
+            guidelineText: formatGuidelines(result.guidelines),
+            config: { followupCount: 3 },
+          })
+
+          function addNodesRecursive(
+            tree: InitialTreeNode[],
+            parentId: NodeId | null,
+            order: number
+          ) {
+            tree.forEach((node, index) => {
+              const nodeOrder = order + index
+
+              let nodeId: NodeId
+              if (node.type === "heading") {
+                nodeId = addNode({
+                  workspaceId: createdWorkspaceId,
+                  parentId,
+                  type: "heading",
+                  title: node.title ?? "",
+                  order: nodeOrder,
+                  origin: "llm",
+                })
+              } else if (node.type === "question") {
+                nodeId = addNode({
+                  workspaceId: createdWorkspaceId,
+                  parentId,
+                  type: "question",
+                  question: node.question ?? "",
+                  answer: "",
+                  reconstructedText: "",
+                  order: nodeOrder,
+                  origin: "llm",
+                })
+              } else {
+                nodeId = addNode({
+                  workspaceId: createdWorkspaceId,
+                  parentId,
+                  type: "note",
+                  text: node.text ?? "",
+                  order: nodeOrder,
+                  origin: "llm",
+                })
+              }
+
+              if (node.children && node.children.length > 0) {
+                addNodesRecursive(node.children, nodeId, 0)
+              }
+            })
+          }
+
+          addNodesRecursive(result.tree, null, 0)
+
+          return { workspaceId: createdWorkspaceId }
+        } catch (err) {
+          return { workspaceId: "" as WorkspaceId, error: toUserFriendlyError(err) }
+        }
+      },
+
+      generateFollowupQuestionsForWorkspace: async (workspaceId, originNodeId) => {
+        const { appSettings, workspacesById, nodesById, addNode } = get()
+
+        if (!appSettings.openRouterApiKey.trim()) {
+          throw new Error("APIキーが設定されていません")
+        }
+
+        const workspace = workspacesById[workspaceId]
+        if (!workspace) {
+          throw new Error("ワークスペースが見つかりません")
+        }
+
+        const workspaceNodes = Object.values(nodesById).filter(
+          (n) => n.workspaceId === workspaceId
+        )
+        const markdown = workspaceToMarkdownForLLM(workspace, workspaceNodes)
+
+        const result = await generateFollowupQuestions(
+          workspace.theme,
+          workspace.description,
+          workspace.guidelineText,
+          markdown,
+          workspace.config.followupCount,
+          appSettings.openRouterApiKey,
+          appSettings.model,
+          originNodeId
+        )
+
+        const addedNodeIds: NodeId[] = []
+        const expandIdSet = new Set<NodeId>()
+
+        const collectExpandIds = (startId: NodeId | null) => {
+          let current = startId
+          while (current) {
+            if (expandIdSet.has(current)) break
+            expandIdSet.add(current)
+            current = nodesById[current]?.parentId ?? null
+          }
+        }
+
+        for (const q of result.newQuestions) {
+          let parentId: NodeId | null = null
+
+          const trimmedParentId = q.parentId?.trim()
+
+          if (trimmedParentId && trimmedParentId !== "null") {
+            if (trimmedParentId.startsWith("[") && trimmedParentId.endsWith("]")) {
+              const withoutBrackets = trimmedParentId.slice(1, -1)
+              const parentNode = nodesById[withoutBrackets as NodeId]
+              if (parentNode && parentNode.workspaceId === workspaceId) {
+                parentId = parentNode.id
+              }
+            } else {
+              const parentNode = nodesById[trimmedParentId as NodeId]
+              if (parentNode && parentNode.workspaceId === workspaceId) {
+                parentId = parentNode.id
+              }
+            }
+          }
+
+          if (!parentId && originNodeId) {
+            const originNode = nodesById[originNodeId]
+            if (originNode && originNode.workspaceId === workspaceId) {
+              parentId = originNode.id
+            }
+          }
+
+          const nodeId = addNode({
+            workspaceId,
+            parentId,
+            type: "question",
+            question: q.question,
+            answer: "",
+            reconstructedText: "",
+            origin: "llm",
+          })
+
+          addedNodeIds.push(nodeId)
+          if (parentId) {
+            collectExpandIds(parentId)
+          }
+        }
+
+        return { nodeIds: addedNodeIds, expandIds: Array.from(expandIdSet) }
+      },
+
+      testConnection: async ({ apiKey, model }) => {
+        if (!apiKey.trim()) {
+          return { success: false, error: "APIキーが設定されていません" }
+        }
+
+        try {
+          await generateReconstructedText(
+            "接続テスト",
+            "接続テスト",
+            apiKey,
+            model
+          )
+          return { success: true }
+        } catch (err) {
+          return { success: false, error: toUserFriendlyError(err) }
+        }
       },
 
       updateWorkspace: (partial) => {

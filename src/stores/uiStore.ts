@@ -12,6 +12,7 @@ type UIState = {
   rootBusyByWorkspace: Record<WorkspaceId, boolean>
   toast: Toast | null
   expanded: Record<NodeId, boolean>
+  highlighted: Record<NodeId, boolean>
 
   setCreatingWorkspace: (value: boolean) => void
   setNodeBusy: (nodeId: NodeId, status: NodeBusy | undefined) => void
@@ -20,6 +21,7 @@ type UIState = {
   clearToast: () => void
   toggleExpanded: (nodeId: NodeId) => void
   setExpanded: (nodeId: NodeId, value: boolean) => void
+  flashHighlight: (nodeIds: NodeId[], durationMs: number) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -28,6 +30,7 @@ export const useUIStore = create<UIState>((set) => ({
   rootBusyByWorkspace: {},
   toast: null,
   expanded: {},
+  highlighted: {},
 
   setCreatingWorkspace: (value) => set({ creatingWorkspace: value }),
 
@@ -54,4 +57,24 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({
       expanded: { ...state.expanded, [nodeId]: value },
     })),
+
+  flashHighlight: (nodeIds, durationMs) => {
+    set((state) => {
+      const newHighlighted: Record<NodeId, boolean> = {}
+      nodeIds.forEach((id) => {
+        newHighlighted[id] = true
+      })
+      return { ...state, highlighted: newHighlighted }
+    })
+
+    setTimeout(() => {
+      set((state) => {
+        const newHighlighted = { ...state.highlighted }
+        nodeIds.forEach((id) => {
+          delete newHighlighted[id]
+        })
+        return { ...state, highlighted: newHighlighted }
+      })
+    }, durationMs)
+  },
 }))

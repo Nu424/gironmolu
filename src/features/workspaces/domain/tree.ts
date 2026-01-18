@@ -79,3 +79,11 @@ export function findNodeIdsByParentId(
     .filter(([, node]) => node.parentId === parentId)
     .map(([id]) => id)
 }
+
+export type InitialTreeNode = {
+  type: "heading" | "question" | "note"
+  title?: string
+  question?: string
+  text?: string
+  children?: InitialTreeNode[]
+}
