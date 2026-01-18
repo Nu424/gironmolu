@@ -7,17 +7,19 @@ import {
   InitialGenerateOutputSchema,
   ReconstructOutputSchema,
   FollowupGenerateOutputSchema,
+  TreeNodeOutputSchema,
   type InitialGenerateOutput,
   type ReconstructOutput,
   type FollowupGenerateOutput,
 } from "./schemas"
 import { buildInitialGeneratePrompt, buildReconstructPrompt, buildFollowupGeneratePrompt } from "./prompts"
-import { z } from "zod"
 import { zodToJsonSchema } from "zod-to-json-schema"
 
-const toJsonSchema = (schema: z.ZodTypeAny) =>
+type SchemaParser<T> = { parse: (value: unknown) => T }
+
+const toJsonSchema = (schema: unknown, options?: Record<string, unknown>) =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  zodToJsonSchema(schema as unknown as any)
+  zodToJsonSchema(schema as unknown as any, options as unknown as any)
 
 export function toUserFriendlyError(err: unknown): string {
   if (isOpenRouterError(err)) {
@@ -39,7 +41,7 @@ export function toUserFriendlyError(err: unknown): string {
   return err instanceof Error ? err.message : "不明なエラー"
 }
 
-async function parseJSON<T>(content: string, schema: z.ZodSchema<T>): Promise<T> {
+async function parseJSON<T>(content: string, schema: SchemaParser<T>): Promise<T> {
   try {
     const json = JSON.parse(content)
     return schema.parse(json)
@@ -73,7 +75,9 @@ export async function generateInitialTree(
       json_schema: {
         name: "initialGenerate",
         strict: true,
-        schema: toJsonSchema(InitialGenerateOutputSchema),
+        schema: toJsonSchema(InitialGenerateOutputSchema, {
+          definitions: { TreeNodeOutput: TreeNodeOutputSchema },
+        }),
       },
     },
   })
